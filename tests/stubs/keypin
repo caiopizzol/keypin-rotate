@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Stands in for keypin: logs each call and, for rotate --due, writes .keypin/ from STUB_ROTATION.
+set -euo pipefail
+
+echo "keypin $* 1password=${KEYPIN_1PASSWORD:-} op=${OP_SERVICE_ACCOUNT_TOKEN:-} gh=${GH_CONFIG_DIR:-}" >> "$STUB_LOG"
+case "$*" in
+  "rotate --due --yes")
+    if [ -f .keypin/rotation.json ]; then echo "keypin had state" >> "$STUB_LOG"; fi
+    if [ -n "${STUB_ON_ROTATE:-}" ]; then bash "$STUB_ON_ROTATE"; fi
+    if [ -n "${STUB_ROTATION:-}" ]; then
+      mkdir -p .keypin
+      cp "$STUB_ROTATION" .keypin/rotation.json
+      status='{"rotated":{}}'
+      echo "${STUB_STATUS-$status}" > .keypin/status.json
+    fi
+    exit "${STUB_ROTATE_EXIT:-0}"
+    ;;
+  "rotate --check") exit "${STUB_CHECK_EXIT:-0}" ;;
+  "rotate --approve-revoke "*)
+    # Reads stdin, as a prompt would, to catch a loop that feeds keypin its own input.
+    cat > /dev/null
+    exit "${STUB_REVOKE_EXIT:-0}"
+    ;;
+  *) exit 2 ;;
+esac
