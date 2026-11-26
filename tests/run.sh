@@ -351,6 +351,21 @@ test_a_status_only_seed_is_restored() {
   same "$(git -C "$T/origin.git" show "$(remote_state):.keypin/status.json")" '{"rotated":{"seed":true}}'
 }
 
+test_a_state_branch_with_no_state_is_refused() {
+  git -C "$T/seed" switch --quiet --orphan state-seed
+  echo "# not state" > "$T/seed/NOTES.md"
+  git -C "$T/seed" add NOTES.md
+  git -C "$T/seed" commit --quiet -m "chore: not state"
+  git -C "$T/seed" push --quiet origin "HEAD:refs/heads/$BRANCH"
+  local before
+  before=$(remote_state)
+  if run_action; then fail "the run passed"; fi
+  has "$T/out" "::error::$BRANCH has neither .keypin/rotation.json nor .keypin/status.json."
+  lacks "$STUB_LOG" "revokes/claim"
+  lacks "$STUB_LOG" "keypin rotate"
+  same "$(remote_state)" "$before"
+}
+
 test_unchanged_state_on_a_moved_branch_fails_the_save() {
   echo '{"issued":[]}' > "$T/old.json"
   seed_state "$T/old.json"

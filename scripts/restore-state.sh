@@ -50,5 +50,9 @@ for file in rotation.json status.json; do
   fi
   git cat-file blob "$source:.keypin/$file" > ".keypin/$file"
 done
+if [ -n "$restored" ] && [ -z "$(ls -A .keypin)" ]; then
+  echo "::error::$STATE_BRANCH has neither .keypin/rotation.json nor .keypin/status.json. Check state-branch, or restore the files from an earlier commit or a keypin-state artifact."
+  exit 1
+fi
 echo "Restored .keypin/ from $from at $source."
 output commit "$restored"
