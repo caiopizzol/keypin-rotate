@@ -33,7 +33,7 @@ setup() {
   export STUB_DIR="$T/stub" STUB_LOG="$T/stub/log"
   mkdir -p "$STUB_DIR"
   unset STUB_ROTATION STUB_STATUS STUB_CLAIM STUB_REPORT STUB_OIDC_FAIL_FROM STUB_ON_ROTATE \
-    STUB_ROTATE_EXIT STUB_REVOKE_EXIT STUB_TOKEN_RESPONSE
+    STUB_ROTATE_EXIT STUB_REVOKE_EXIT STUB_TOKEN_RESPONSE ON_CHECKOUT
 }
 
 # Pushes .keypin/ with the given rotation.json to the state branch, as an earlier run would.
@@ -100,6 +100,7 @@ run_action() {
   local op=OP_SERVICE_ACCOUNT_TOKEN=op-stub state="STATE_BRANCH=$BRANCH"
 
   git clone --quiet "$T/origin.git" "$T/workspace" 2> /dev/null # actions/checkout, which runs second
+  if [ -n "${ON_CHECKOUT:-}" ]; then (cd "$T/workspace" && bash -c "$ON_CHECKOUT"); fi
   step inputs check-inputs.sh CHECK_SETUP="$check" KEYPIN_VERSION=0.46.1 "$state" "$op" || return 1
   if step restore restore-state.sh "$state"; then restore=success; else ok=false; fi
   restored=$(output_of restore commit)
@@ -347,14 +348,53 @@ test_a_symlinked_state_file_is_refused() {
   same "$(remote_state)" "$before"
 }
 
-test_a_keypin_folder_on_the_default_branch_is_refused() {
+# Commits .keypin/ to the default branch, as keypin's free workflow keeps it. $1 is rotation.json's
+# content; with $2 = link, rotation.json is a symlink instead.
+commit_keypin_on_main() {
   mkdir -p "$T/seed/.keypin"
-  echo '{}' > "$T/seed/.keypin/rotation.json"
+  if [ "${2:-}" = link ]; then
+    ln -s /etc/hosts "$T/seed/.keypin/rotation.json"
+  else
+    echo "$1" > "$T/seed/.keypin/rotation.json"
+  fi
+  echo '{"rotated":{}}' > "$T/seed/.keypin/status.json"
   git -C "$T/seed" add .keypin
-  git -C "$T/seed" commit --quiet -m "chore: commit state"
+  git -C "$T/seed" commit --quiet -m "chore: record key rotation"
   git -C "$T/seed" push --quiet origin HEAD:refs/heads/main
+}
+
+test_a_first_run_seeds_state_from_the_default_branch() {
+  commit_keypin_on_main '{"issued":[],"from":"main"}'
+  # Restore reads the commit, not the working tree.
+  export ON_CHECKOUT='echo "{\"issued\":[],\"from\":\"working tree\"}" > .keypin/rotation.json'
+  run_action || fail "the run failed"
+  local commit
+  commit=$(remote_state)
+  [ -n "$commit" ] || fail "no $BRANCH on origin"
+  same "$(git -C "$T/origin.git" show "$commit:.keypin/rotation.json")" '{"issued":[],"from":"main"}'
+  same "$(git -C "$T/origin.git" rev-list --count "$commit")" 1
+  has "$STUB_LOG" "keypin had state"
+  has "$T/out" "keypin starts from .keypin/ on the default branch"
+  has "$STUB_LOG" "curl keypin.dev rotation-report auth=oidc-jwt data={\"commit\":\"$commit\"}"
+}
+
+test_the_state_branch_wins_over_the_default_branch() {
+  commit_keypin_on_main '{"issued":[],"from":"main"}'
+  echo '{"issued":[],"from":"state"}' > "$T/state.json"
+  seed_state "$T/state.json"
+  local before
+  before=$(remote_state)
+  run_action || fail "the run failed"
+  same "$(cat "$T/workspace/.keypin/rotation.json")" '{"issued":[],"from":"state"}'
+  has "$T/out" "keypin uses $BRANCH and ignores the default branch's copy"
+  same "$(remote_state)" "$before"
+}
+
+test_a_symlink_in_the_default_branch_keypin_is_refused() {
+  commit_keypin_on_main "" link
   if run_action; then fail "the run passed"; fi
-  has "$T/out" ".keypin already exists in the checkout"
+  has "$T/out" ".keypin/rotation.json on the default branch isn't a regular file (mode '120000')"
+  lacks "$STUB_LOG" "keypin rotate"
   same "$(remote_state)" ""
 }
 
