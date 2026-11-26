@@ -42,6 +42,8 @@ rm -rf .keypin
 mkdir .keypin
 for file in rotation.json status.json; do
   mode=$(git ls-tree "$source" -- ".keypin/$file" | cut -d' ' -f1)
+  # keypin writes rotation.json only once it has something to record.
+  [ -n "$mode" ] || continue
   if [ "$mode" != 100644 ]; then
     echo "::error::.keypin/$file on $from isn't a regular file (mode '$mode')"
     exit 1

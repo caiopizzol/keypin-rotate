@@ -33,7 +33,8 @@ setup() {
   export STUB_DIR="$T/stub" STUB_LOG="$T/stub/log"
   mkdir -p "$STUB_DIR"
   unset STUB_ROTATION STUB_STATUS STUB_CLAIM STUB_REPORT STUB_OIDC_FAIL_FROM STUB_ON_ROTATE \
-    STUB_ROTATE_EXIT STUB_REVOKE_EXIT STUB_TOKEN_RESPONSE ON_CHECKOUT
+    STUB_ROTATE_EXIT STUB_REVOKE_EXIT STUB_TOKEN_RESPONSE ON_CHECKOUT \
+    STUB_CHECK_EXIT STUB_STATUS_ONLY
 }
 
 # Pushes .keypin/ with the given rotation.json to the state branch, as an earlier run would.
@@ -109,7 +110,7 @@ run_action() {
     step claim claim-revokes.sh "$state" KEYPIN_1PASSWORD=service-account "$op" || ok=false
   fi
   $ok && { step rotate rotate.sh CHECK_SETUP="$check" KEYPIN_1PASSWORD=service-account "$op" || ok=false; }
-  if [ "$restore" = success ]; then
+  if [ "$check" != true ] && [ "$restore" = success ]; then
     step stage stage-state.sh RESTORED="$restored" || ok=false
     staged=$(output_of stage staged)
   fi
@@ -317,7 +318,47 @@ test_check_setup_on_a_first_run_saves_nothing() {
   run_action true || fail "the run failed"
   same "$(remote_state)" ""
   lacks "$STUB_LOG" "upload-artifact"
-  has "$T/out" "nothing to save"
+}
+
+test_check_setup_saves_nothing_seeded_from_the_default_branch() {
+  commit_keypin_on_main '{"issued":[],"from":"main"}'
+  run_action true || fail "the run failed"
+  export STUB_CHECK_EXIT=1
+  if run_action true; then fail "the failed check passed"; fi
+  same "$(remote_state)" ""
+  lacks "$STUB_LOG" "upload-artifact"
+}
+
+test_a_first_run_saves_status_alone() {
+  export STUB_STATUS_ONLY=1
+  run_action || fail "the run failed"
+  local commit
+  commit=$(remote_state)
+  [ -n "$commit" ] || fail "no $BRANCH on origin"
+  same "$(git -C "$T/origin.git" ls-tree --name-only -r "$commit")" ".keypin/status.json"
+  has "$STUB_LOG" "rotation-report"
+}
+
+test_a_status_only_seed_is_restored() {
+  mkdir -p "$T/seed/.keypin"
+  echo '{"rotated":{"seed":true}}' > "$T/seed/.keypin/status.json"
+  git -C "$T/seed" add .keypin
+  git -C "$T/seed" commit --quiet -m "chore: status only"
+  git -C "$T/seed" push --quiet origin HEAD:refs/heads/main
+  run_action || fail "the run failed"
+  same "$(cat "$T/workspace/.keypin/status.json")" '{"rotated":{"seed":true}}'
+  [ ! -e "$T/workspace/.keypin/rotation.json" ] || fail "restore made a rotation.json"
+  same "$(git -C "$T/origin.git" show "$(remote_state):.keypin/status.json")" '{"rotated":{"seed":true}}'
+}
+
+test_unchanged_state_on_a_moved_branch_fails_the_save() {
+  echo '{"issued":[]}' > "$T/old.json"
+  seed_state "$T/old.json"
+  move_during_rotation
+  if run_action; then fail "the run passed"; fi
+  has "$T/out" "::error::$BRANCH moved after this run restored it"
+  same "$(cat "$T/state-commit")" ""
+  lacks "$STUB_LOG" "rotation-report"
 }
 
 test_no_github_token_stops_rotation_and_keeps_state() {

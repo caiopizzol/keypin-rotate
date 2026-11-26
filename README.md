@@ -56,7 +56,7 @@ Then run the workflow with **check setup** checked. It runs `keypin rotate --che
 | Input                      | Default        | Description                                                          |
 | -------------------------- | -------------- | -------------------------------------------------------------------- |
 | `op-service-account-token` |                | 1Password service account token. Required.                           |
-| `check-setup`              | `false`        | `true` runs `keypin rotate --check`, and revokes and reports nothing. |
+| `check-setup`              | `false`        | `true` runs `keypin rotate --check`, and changes nothing.            |
 | `keypin-version`           | `0.46.1`       | Exact keypin version to install.                                     |
 | `state-branch`             | `keypin/state` | Branch that keeps `.keypin/`.                                        |
 
@@ -64,7 +64,7 @@ Then run the workflow with **check setup** checked. It runs `keypin rotate --che
 
 | Output         | Description                                                                         |
 | -------------- | ----------------------------------------------------------------------------------- |
-| `state-commit` | Commit on the state branch after the run. Empty when the run had nothing to save. |
+| `state-commit` | Commit on the state branch after the run. Empty with `check-setup` or nothing to save. |
 
 ## State branch
 

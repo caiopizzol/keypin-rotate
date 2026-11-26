@@ -10,7 +10,7 @@ inputs:
     description: Token of the 1Password service account that reads and writes the keys.
     required: true
   check-setup:
-    description: true to check the setup with `keypin rotate --check`, and rotate nothing.
+    description: true to check the setup with `keypin rotate --check`, and change nothing.
     default: "false"
   keypin-version:
     description: Exact keypin version to install.
@@ -21,7 +21,7 @@ inputs:
 
 outputs:
   state-commit:
-    description: Commit on the state branch this run saved or left as it was. Empty when nothing was saved.
+    description: Commit on the state branch this run saved or left as it was. Empty when nothing was saved, and with check-setup.
     value: ${{ steps.save.outputs.commit }}
 
 runs:
@@ -80,9 +80,10 @@ runs:
         OP_SERVICE_ACCOUNT_TOKEN: ${{ inputs.op-service-account-token }}
 
     # The steps below run even when rotation failed, since keypin records what it did as it goes.
+    # A setup check saves nothing.
     - name: Stage keypin state
       id: stage
-      if: always() && steps.restore.outcome == 'success'
+      if: always() && inputs.check-setup != 'true' && steps.restore.outcome == 'success'
       shell: bash
       run: '"$GITHUB_ACTION_PATH/scripts/stage-state.sh"'
       env:

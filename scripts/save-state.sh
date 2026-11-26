@@ -14,12 +14,24 @@ else
   git read-tree --empty
 fi
 for file in rotation.json status.json; do
+  [ -f "$STAGED/$file" ] || continue
   blob=$(git hash-object -w -- "$STAGED/$file")
   git update-index --add --cacheinfo "100644,$blob,.keypin/$file"
 done
 tree=$(git write-tree)
 
+moved() {
+  echo "::error::$STATE_BRANCH moved after this run restored it (from '${RESTORED:-no branch}' to '${1:-no branch}'), so keypin didn't overwrite it. This run's state is in the $ARTIFACT artifact: compare the two, and push the one to keep."
+  exit 1
+}
+
 if [ -n "$RESTORED" ] && [ "$tree" = "$(git rev-parse "$RESTORED^{tree}")" ]; then
+  if ! remote=$(git ls-remote origin "$branch"); then
+    echo "::error::Couldn't check that $STATE_BRANCH is still at $RESTORED, so this run reports nothing."
+    exit 1
+  fi
+  remote=${remote%%[[:space:]]*}
+  [ "$remote" = "$RESTORED" ] || moved "$remote"
   echo "keypin state didn't change; $STATE_BRANCH stays at $RESTORED."
   output commit "$RESTORED"
   exit 0
@@ -50,10 +62,7 @@ for attempt in 1 2 3; do
       output commit "$commit"
       exit 0
     fi
-    if [ "$remote" != "$RESTORED" ]; then
-      echo "::error::$STATE_BRANCH moved after this run restored it (from '${RESTORED:-no branch}' to '${remote:-no branch}'), so keypin didn't overwrite it. This run's state is in the $ARTIFACT artifact: compare the two, and push the one to keep."
-      exit 1
-    fi
+    [ "$remote" = "$RESTORED" ] || moved "$remote"
   fi
   [ "$attempt" = 3 ] || sleep "${SAVE_RETRY_DELAY:-10}"
 done
