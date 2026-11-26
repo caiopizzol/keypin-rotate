@@ -12,9 +12,11 @@ mkdir -p "$WORK"
 committed=false
 if [ -e .keypin ] || [ -L .keypin ]; then committed=true; fi
 
-status=0
-git ls-remote --exit-code origin "refs/heads/$STATE_BRANCH" > /dev/null || status=$?
-if [ "$status" = 2 ]; then
+if ! remote=$(remote_state); then
+  echo "::error::Couldn't read $STATE_BRANCH from origin."
+  exit 1
+fi
+if [ -z "$remote" ]; then
   if ! $committed; then
     echo "::notice::$STATE_BRANCH doesn't exist yet, so keypin starts with no state. This run creates it."
     output commit ""
@@ -24,7 +26,7 @@ if [ "$status" = 2 ]; then
   from="the default branch"
   restored=""
   echo "::notice::$STATE_BRANCH doesn't exist yet, so keypin starts from .keypin/ on the default branch. This run creates $STATE_BRANCH."
-elif [ "$status" = 0 ]; then
+else
   git fetch --quiet --no-tags origin "+refs/heads/$STATE_BRANCH:refs/keypin/state"
   source=$(git rev-parse --verify "refs/keypin/state^{commit}")
   from=$STATE_BRANCH
@@ -32,8 +34,11 @@ elif [ "$status" = 0 ]; then
   if $committed; then
     echo "::notice::.keypin/ is on both the default branch and $STATE_BRANCH. keypin uses $STATE_BRANCH and ignores the default branch's copy."
   fi
-else
-  echo "::error::Couldn't read $STATE_BRANCH from origin."
+fi
+
+mode=$(git ls-tree "$source" -- .keypin | cut -d' ' -f1)
+if [ -n "$mode" ] && [ "$mode" != 040000 ]; then
+  echo "::error::.keypin on $from isn't a folder (mode '$mode')"
   exit 1
 fi
 

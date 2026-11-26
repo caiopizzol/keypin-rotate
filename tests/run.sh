@@ -366,6 +366,28 @@ test_a_state_branch_with_no_state_is_refused() {
   same "$(remote_state)" "$before"
 }
 
+test_a_deleted_branch_is_told_from_a_ref_ending_like_it() {
+  echo '{"issued":[]}' > "$T/old.json"
+  seed_state "$T/old.json"
+  local git="git -C $T/origin.git"
+  echo "$git update-ref refs/backup/refs/heads/$BRANCH refs/heads/$BRANCH && $git update-ref -d refs/heads/$BRANCH" > "$T/delete.sh"
+  export STUB_ON_ROTATE="$T/delete.sh"
+  if run_action; then fail "the run passed"; fi
+  has "$T/out" "to 'no branch'), so keypin didn't overwrite it"
+  lacks "$STUB_LOG" "rotation-report"
+}
+
+test_a_keypin_symlink_on_the_default_branch_is_refused() {
+  ln -s docs "$T/seed/.keypin"
+  git -C "$T/seed" add .keypin
+  git -C "$T/seed" commit --quiet -m "chore: link"
+  git -C "$T/seed" push --quiet origin HEAD:refs/heads/main
+  if run_action; then fail "the run passed"; fi
+  has "$T/out" "::error::.keypin on the default branch isn't a folder (mode '120000')"
+  lacks "$STUB_LOG" "keypin rotate"
+  same "$(remote_state)" ""
+}
+
 test_unchanged_state_on_a_moved_branch_fails_the_save() {
   echo '{"issued":[]}' > "$T/old.json"
   seed_state "$T/old.json"

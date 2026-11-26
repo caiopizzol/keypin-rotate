@@ -24,6 +24,14 @@ keypin_dev_post() {
   curl -sS --max-time 30 -X POST -H "Authorization: Bearer $oidc" "$@" "$KEYPIN_DEV/console/api/$path"
 }
 
+# Prints the commit the state branch is at on origin, or nothing if it doesn't exist. ls-remote
+# also lists refs that only end with the pattern, so keep the exact ref.
+remote_state() {
+  local refs
+  refs=$(git ls-remote origin "refs/heads/$STATE_BRANCH") || return 1
+  awk -v ref="refs/heads/$STATE_BRANCH" '$2 == ref { print $1 }' <<< "$refs"
+}
+
 # Writes name=value to the step's outputs.
 output() {
   echo "$1=$2" >> "$GITHUB_OUTPUT"

@@ -26,11 +26,10 @@ moved() {
 }
 
 if [ -n "$RESTORED" ] && [ "$tree" = "$(git rev-parse "$RESTORED^{tree}")" ]; then
-  if ! remote=$(git ls-remote origin "$branch"); then
+  if ! remote=$(remote_state); then
     echo "::error::Couldn't check that $STATE_BRANCH is still at $RESTORED, so this run reports nothing."
     exit 1
   fi
-  remote=${remote%%[[:space:]]*}
   [ "$remote" = "$RESTORED" ] || moved "$remote"
   echo "keypin state didn't change; $STATE_BRANCH stays at $RESTORED."
   output commit "$RESTORED"
@@ -55,8 +54,7 @@ for attempt in 1 2 3; do
     output commit "$commit"
     exit 0
   fi
-  if remote=$(git ls-remote origin "$branch"); then
-    remote=${remote%%[[:space:]]*}
+  if remote=$(remote_state); then
     if [ "$remote" = "$commit" ]; then
       echo "Saved keypin state to $STATE_BRANCH at $commit."
       output commit "$commit"
