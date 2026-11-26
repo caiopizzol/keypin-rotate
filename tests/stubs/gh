@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Stands in for gh: logs auth login and whether it got the token keypin.dev sent.
+set -euo pipefail
+
+if [ "$*" = "auth login --hostname github.com --with-token --insecure-storage" ]; then
+  token=$(cat)
+  echo "gh auth login gh=$GH_CONFIG_DIR token=$([ "$token" = ghs_stub ] && echo ok || echo wrong)" >> "$STUB_LOG"
+  exit 0
+fi
+echo "gh stub: unexpected call: $*" >&2
+exit 2

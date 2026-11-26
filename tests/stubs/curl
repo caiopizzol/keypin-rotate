@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Stands in for curl: answers GitHub's OIDC endpoint and keypin.dev's console API from STUB_* variables.
+set -euo pipefail
+
+token='{"token":"ghs_stub"}' claim='{"revokes":[]}' report='{"waiting":0}'
+url="" data="" auth=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -H)
+      [[ "$2" == "Authorization: Bearer "* ]] && auth=${2#Authorization: Bearer }
+      shift 2
+      ;;
+    -d) data=$2 && shift 2 ;;
+    -X | --max-time) shift 2 ;;
+    -*) shift ;;
+    *) url=$1 && shift ;;
+  esac
+done
+
+case "$url" in
+  "$ACTIONS_ID_TOKEN_REQUEST_URL"*)
+    count=$(($(cat "$STUB_DIR/oidc-count" 2> /dev/null || echo 0) + 1))
+    echo "$count" > "$STUB_DIR/oidc-count"
+    echo "curl oidc ${url#"$ACTIONS_ID_TOKEN_REQUEST_URL"} auth=$auth" >> "$STUB_LOG"
+    if [ "$count" -ge "${STUB_OIDC_FAIL_FROM:-999}" ]; then
+      echo "curl: (22) The requested URL returned error: 500" >&2
+      exit 22
+    fi
+    echo '{"value":"oidc-jwt"}'
+    ;;
+  https://keypin.dev/console/api/*)
+    path=${url#https://keypin.dev/console/api/}
+    echo "curl keypin.dev $path auth=$auth data=$data" >> "$STUB_LOG"
+    case "$path" in
+      github-token) echo "${STUB_TOKEN_RESPONSE-$token}" ;;
+      revokes/claim) echo "${STUB_CLAIM-$claim}" ;;
+      rotation-report) echo "${STUB_REPORT-$report}" ;;
+      *) exit 22 ;;
+    esac
+    ;;
+  *)
+    echo "curl stub: unexpected URL $url" >&2
+    exit 7
+    ;;
+esac
