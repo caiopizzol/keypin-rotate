@@ -103,9 +103,15 @@ run_action() {
   git clone --quiet "$T/origin.git" "$T/workspace" 2> /dev/null # actions/checkout, which runs second
   if [ -n "${ON_CHECKOUT:-}" ]; then (cd "$T/workspace" && bash -c "$ON_CHECKOUT"); fi
   step inputs check-inputs.sh CHECK_SETUP="$check" KEYPIN_VERSION=0.46.1 "$state" "$op" || return 1
-  if step restore restore-state.sh "$state"; then restore=success; else ok=false; fi
+  step token github-token.sh || ok=false
+  if $ok; then
+    if step restore restore-state.sh "$state" REPORTED="$(output_of token reported)"; then
+      restore=success
+    else
+      ok=false
+    fi
+  fi
   restored=$(output_of restore commit)
-  $ok && { step token github-token.sh || ok=false; }
   if $ok && [ "$check" != true ]; then
     step claim claim-revokes.sh "$state" KEYPIN_1PASSWORD=service-account "$op" || ok=false
   fi
@@ -408,6 +414,46 @@ test_no_github_token_stops_rotation_and_keeps_state() {
   has "$T/out" "::error::keypin.dev gave no GitHub token. No token: keypin-app isn't installed on acme/web."
   lacks "$STUB_LOG" "keypin rotate"
   same "$(remote_state)" "$before"
+}
+
+test_a_lost_state_branch_is_refused_when_keypin_dev_has_reports() {
+  export STUB_TOKEN_RESPONSE='{"token":"ghs_stub","reported":true}'
+  if run_action; then fail "the run passed"; fi
+  has "$T/out" "::error::$BRANCH is gone, though this repository reported to keypin.dev before."
+  has "$T/out" "Restore $BRANCH from the latest keypin-state-<run id>-<attempt> artifact, or ask keypin.dev to reset this repository to start over."
+  lacks "$STUB_LOG" "keypin rotate"
+  lacks "$STUB_LOG" "revokes/claim"
+  lacks "$STUB_LOG" "upload-artifact"
+  same "$(remote_state)" ""
+}
+
+test_a_first_run_starts_with_no_state_when_keypin_dev_has_no_reports_or_doesnt_say() {
+  local response
+  waiting_rotation "$T/rotation.json"
+  export STUB_ROTATION="$T/rotation.json"
+  for response in '{"token":"ghs_stub","reported":false}' '{"token":"ghs_stub","reported":null}'; do
+    export STUB_TOKEN_RESPONSE=$response
+    git -C "$T/origin.git" update-ref -d "refs/heads/$BRANCH" 2> /dev/null || true
+    run_action || fail "the run failed with $response"
+    has "$T/out" "doesn't exist yet, so keypin starts with no state"
+    [ -n "$(remote_state)" ] || fail "no $BRANCH on origin with $response"
+  done
+}
+
+test_a_lost_state_branch_isnt_seeded_again_from_the_default_branch() {
+  commit_keypin_on_main '{"issued":[],"from":"main"}'
+  waiting_rotation "$T/rotation.json"
+  export STUB_ROTATION="$T/rotation.json"
+  run_action || fail "the first run failed"
+  [ -n "$(remote_state)" ] || fail "the first run saved no $BRANCH"
+  git -C "$T/origin.git" update-ref -d "refs/heads/$BRANCH"
+  : > "$STUB_LOG"
+  export STUB_TOKEN_RESPONSE='{"token":"ghs_stub","reported":true}'
+  if run_action; then fail "the run passed"; fi
+  has "$T/out" "::error::$BRANCH is gone, though this repository reported to keypin.dev before."
+  lacks "$STUB_LOG" "revokes/claim"
+  lacks "$STUB_LOG" "keypin rotate"
+  same "$(remote_state)" ""
 }
 
 test_a_symlinked_state_file_is_refused() {

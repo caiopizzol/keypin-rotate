@@ -3,8 +3,8 @@
 A GitHub Action that runs [keypin](https://github.com/caiopizzol/keypin) scheduled rotation with
 [keypin.dev](https://keypin.dev). Each run:
 
-1. Restores `.keypin/rotation.json` and `status.json` from the `keypin/state` branch.
-2. Gets a GitHub token from keypin.dev, for keypin to publish keys to GitHub.
+1. Gets a GitHub token from keypin.dev, for keypin to publish keys to GitHub.
+2. Restores `.keypin/rotation.json` and `status.json` from the `keypin/state` branch.
 3. Revokes the old keys an approver approved on keypin.dev, if `.keypin/rotation.json` still names them.
 4. Rotates every due key with `keypin rotate --due --yes`.
 5. Saves the state to `keypin/state`, and keeps a copy as a 90-day artifact.
@@ -68,7 +68,8 @@ Then run the workflow with **check setup** checked. It runs `keypin rotate --che
 
 ## State branch
 
-If the state branch doesn't exist, the first run creates it, from `.keypin/` on the default branch if it's there. Once
+If the state branch doesn't exist, the first run creates it, from `.keypin/` on the default branch if it's there.
+If the repository reported to keypin.dev before, a run without the branch fails before it rotates. Once
 the state branch exists, the run ignores `.keypin/` on the default branch. A
 runner has no receipts of earlier publishes, so publish the first keys from your laptop, as step 8 of the
 [guide](https://github.com/caiopizzol/keypin/blob/main/docs/guides/scheduled-rotation.md#setup) says.
