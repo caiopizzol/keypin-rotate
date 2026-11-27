@@ -2,12 +2,11 @@
 # Restores .keypin/ from the state branch into the checkout, and outputs the commit it came from.
 # Without the branch, it seeds .keypin/ from the default branch's commit if .keypin/ is committed
 # there, or else starts with no state, and outputs an empty commit so the save creates the branch.
+# It refuses to start with no state when keypin.dev said this repository reported before
+# (REPORTED=true): the branch was lost, and keypin would forget the old keys waiting for revoke.
 set -euo pipefail
 # shellcheck source=lib.sh
 . "$(dirname "$0")/lib.sh"
-
-rm -rf "$WORK"
-mkdir -p "$WORK"
 
 committed=false
 if [ -e .keypin ] || [ -L .keypin ]; then committed=true; fi
@@ -18,6 +17,10 @@ if ! remote=$(remote_state); then
 fi
 if [ -z "$remote" ]; then
   if ! $committed; then
+    if [ "${REPORTED:-}" = true ]; then
+      echo "::error::$STATE_BRANCH is gone, though this repository reported to keypin.dev before. Without it, keypin would forget the old keys waiting for revoke. Restore $STATE_BRANCH from the latest keypin-state-<run id>-<attempt> artifact, or ask keypin.dev to reset this repository to start over."
+      exit 1
+    fi
     echo "::notice::$STATE_BRANCH doesn't exist yet, so keypin starts with no state. This run creates it."
     output commit ""
     exit 0
