@@ -69,7 +69,7 @@ Then run the workflow with **check setup** checked. It runs `keypin rotate --che
 ## State branch
 
 If the state branch doesn't exist, the first run creates it, from `.keypin/` on the default branch if it's there.
-If the repository reported to keypin.dev before, a run without the branch or that copy fails before it rotates. Once
+If the repository reported to keypin.dev before, a run without the branch fails before it rotates. Once
 the state branch exists, the run ignores `.keypin/` on the default branch. A
 runner has no receipts of earlier publishes, so publish the first keys from your laptop, as step 8 of the
 [guide](https://github.com/caiopizzol/keypin/blob/main/docs/guides/scheduled-rotation.md#setup) says.

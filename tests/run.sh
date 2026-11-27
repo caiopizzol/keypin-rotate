@@ -440,12 +440,20 @@ test_a_first_run_starts_with_no_state_when_keypin_dev_has_no_reports_or_doesnt_s
   done
 }
 
-test_reports_on_keypin_dev_dont_stop_a_seed_from_the_default_branch() {
+test_a_lost_state_branch_isnt_seeded_again_from_the_default_branch() {
   commit_keypin_on_main '{"issued":[],"from":"main"}'
+  waiting_rotation "$T/rotation.json"
+  export STUB_ROTATION="$T/rotation.json"
+  run_action || fail "the first run failed"
+  [ -n "$(remote_state)" ] || fail "the first run saved no $BRANCH"
+  git -C "$T/origin.git" update-ref -d "refs/heads/$BRANCH"
+  : > "$STUB_LOG"
   export STUB_TOKEN_RESPONSE='{"token":"ghs_stub","reported":true}'
-  run_action || fail "the run failed"
-  has "$T/out" "keypin starts from .keypin/ on the default branch"
-  same "$(git -C "$T/origin.git" show "$(remote_state):.keypin/rotation.json")" '{"issued":[],"from":"main"}'
+  if run_action; then fail "the run passed"; fi
+  has "$T/out" "::error::$BRANCH is gone, though this repository reported to keypin.dev before."
+  lacks "$STUB_LOG" "revokes/claim"
+  lacks "$STUB_LOG" "keypin rotate"
+  same "$(remote_state)" ""
 }
 
 test_a_symlinked_state_file_is_refused() {
